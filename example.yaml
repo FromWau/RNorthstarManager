@@ -1,0 +1,25 @@
+github_token: ""
+log_level: "DEBUG"
+launcher:
+  file: "NorthstarLauncher.exe"
+  args:
+    - "-multiple"
+    - "-novid"
+    - "-windowed"
+    - "-noborder"
+    - "-width 2560"
+    - "-height 1440"
+    - "+exec custom.cfg"
+    - "+cl_showfps 2"
+
+mods:
+  - name: "Northstar"
+    repo: "R2Northstar/Northstar"
+    last_update: '2023-12-01T20:41:45'
+    install_dir: "."
+    file: "NorthstarLauncher.exe"
+    exclude_files:
+      - "ns_startup_args.txt"
+      - "ns_startup_args_dedi.txt"
+  - name: "ModSettings"
+    repo: "EladNLG/ModSettings"
