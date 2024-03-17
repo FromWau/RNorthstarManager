@@ -1,12 +1,14 @@
-use std::{fs, io};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 
 use futures_util::stream::StreamExt;
 use reqwest::header::{HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
+
+use std::{error, fs, io};
 
 #[tokio::main]
 async fn main() {
@@ -16,13 +18,12 @@ async fn main() {
     let file = Path::new(&config.launcher.file);
 
     if !file.exists() {
-        download_latest_release_assets().await.unwrap();
+        let url = String::from_str("https://api.github.com/repos/R2Northstar/Northstar/releases/latest").unwrap();
+        download_latest_release_assets(url).await.unwrap();
     }
 }
 
-async fn download_latest_release_assets() -> Result<(), Box<dyn std::error::Error>> {
-    let url = "https://api.github.com/repos/R2Northstar/Northstar/releases/latest";
-
+async fn download_latest_release_assets(url: String) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let response = client
         .get(url)
@@ -30,48 +31,45 @@ async fn download_latest_release_assets() -> Result<(), Box<dyn std::error::Erro
         .send()
         .await?;
 
-    if response.status().is_success() {
-        let release: Release = response.json().await?;
+    if !response.status().is_success() {
+        println!("Failed to get latest release: {}", response.status());
+        return Err("Failed to get latest release".into());
+    }
 
-        if let Some(asset) = release.assets.first() {
-            let file_name = format!("{}", asset.name);
-            let mut dest_file = File::create(&file_name)?;
+    let release: Release = response.json().await?;
 
-            let asset_response = client
-                .get(&asset.browser_download_url)
-                .send()
-                .await?;
+    if let Some(asset) = release.assets.first() {
+        let file_name = asset.name.to_string();
+        let mut dest_file = File::create(&file_name)?;
 
-            // Check if the request was successful
-            if asset_response.status().is_success() {
-                // Write the response bytes to the file, displaying progress
-                let mut content_length = 0;
-                if let Some(len) = asset_response.content_length() {
-                    content_length = len;
-                }
+        let asset_response = client.get(&asset.browser_download_url).send().await?;
 
-                let mut downloaded: u64 = 0;
-                let mut stream = asset_response.bytes_stream(); // Change to bytes_stream() to get a stream of bytes
-
-                while let Some(chunk) = stream.next().await {
-                    let chunk = chunk?;
-                    downloaded += chunk.len() as u64;
-                    dest_file.write_all(&chunk)?;
-                    let progress = (downloaded as f64 / content_length as f64) * 100.0;
-                    print!("\rDownloading {:.2}% ({}/{})", progress, downloaded, content_length);
-                    io::stdout().flush()?; // Flush stdout to ensure the progress is immediately displayed
-                }
-                print!("\n");
-
-                println!("Download completed");
-            } else {
-                println!("Failed to download asset: {}", asset_response.status());
+        if asset_response.status().is_success() {
+            // Write the response bytes to the file, displaying progress
+            let mut content_length = 0;
+            if let Some(len) = asset_response.content_length() {
+                content_length = len;
             }
+
+            let mut downloaded: u64 = 0;
+            let mut stream = asset_response.bytes_stream();
+
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                downloaded += chunk.len() as u64;
+                dest_file.write_all(&chunk)?;
+                let progress = (downloaded as f64 / content_length as f64) * 100.0;
+                print!("\rDownloading {:.2}% ({}/{})", progress, downloaded, content_length);
+                io::stdout().flush()?; // Flush stdout to ensure the progress is immediately displayed
+            }
+            println!();
+
+            println!("Download completed");
         } else {
-            println!("No assets found in the latest release");
+            println!("Failed to download asset: {}", asset_response.status());
         }
     } else {
-        println!("Failed to fetch releases: {}", response.status());
+        println!("No assets found in the latest release");
     }
 
     Ok(())
