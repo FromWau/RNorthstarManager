@@ -1,7 +1,7 @@
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, Seek, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 
@@ -19,21 +19,25 @@ async fn main() {
     let file = Path::new(&config.launcher.file);
 
     if !file.exists() {
-        // let url = String::from_str("https://api.github.com/repos/R2Northstar/Northstar/releases/latest").unwrap();
+        let url = String::from_str("https://api.github.com/repos/R2Northstar/Northstar/releases/latest").unwrap();
         // let archive = download_latest_release_assets(url).await;
 
-        // if let Err(_) = archive {
-            // println!("Failed to download latest release");
-            // return;
-        // }
-        // let archive = archive.unwrap();
-        let archive = File::open("Northstar.release.v1.24.4.zip").unwrap();
-        let install_dir = ".";
+        // let archive = match archive {
+        //     Ok(archive) => File::open(archive).unwrap(),
+        //     Err(_) => {
+        //         println!("Failed to download latest release");
+        //         return;
+        //     }
+        // };
+
+        let archive = File::open(PathBuf::from("Northstar.release.v1.24.4.zip")).unwrap();
+
+        let install_dir = "test";
         extract_zip(archive, install_dir);
     }
 }
 
-async fn download_latest_release_assets(url: String) -> Result<File, Box<dyn std::error::Error>> {
+async fn download_latest_release_assets(url: String) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let response = client
         .get(url)
@@ -79,7 +83,7 @@ async fn download_latest_release_assets(url: String) -> Result<File, Box<dyn std
         println!("Download completed");
 
         dest_file.seek(std::io::SeekFrom::Start(0))?; // Rewind the file pointer
-        Ok(dest_file)
+        Ok(PathBuf::from(&file_name))
     } else {
         Err("No assets found in the latest release".into())
     }
@@ -102,16 +106,18 @@ fn extract_zip(archive: File, dir: &str) {
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
         let file_name = file.name();
-
         let target_path = extract_dir.join(file_name);
 
-        if let Some(parent_dir) = target_path.parent() {
-            fs::create_dir_all(parent_dir).expect("Failed to create needed parent dirs, while extracting zip");
+        if file.is_dir() {
+            fs::create_dir_all(&target_path).expect("Failed to create directory while extracting zip");
+        } else {
+            if let Some(parent_dir) = target_path.parent() {
+                fs::create_dir_all(parent_dir).expect("Failed to create needed parent dirs while extracting zip");
+            }
+
+            let mut output_file = File::create(&target_path).expect("Failed to create file while extracting zip");
+            io::copy(&mut file, &mut output_file).expect("Failed to copy file while extracting zip");
         }
-
-        let mut ouput_file = File::create(&target_path).expect("Failed to create file while extracting zip");
-
-        io::copy(&mut file, &mut ouput_file).expect("Failed to copy file while extracting zip");
 
         println!("Extracted: {:?}", target_path);
     }
