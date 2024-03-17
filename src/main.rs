@@ -1,5 +1,6 @@
+use std::env;
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, Seek, Write};
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
@@ -7,6 +8,7 @@ use std::sync::atomic::AtomicBool;
 use futures_util::stream::StreamExt;
 use reqwest::header::{HeaderValue, USER_AGENT};
 use serde::{Deserialize, Serialize};
+use zip::ZipArchive;
 
 #[tokio::main]
 async fn main() {
@@ -17,18 +19,17 @@ async fn main() {
     let file = Path::new(&config.launcher.file);
 
     if !file.exists() {
-        let url = String::from_str("https://api.github.com/repos/R2Northstar/Northstar/releases/latest").unwrap();
-        let is_downloaded = download_latest_release_assets(url).await;
+        // let url = String::from_str("https://api.github.com/repos/R2Northstar/Northstar/releases/latest").unwrap();
+        // let archive = download_latest_release_assets(url).await;
 
-        if is_downloaded.is_err() {
-            println!("Failed to download latest release");
-            return;
-        }
-
-        println!("Launcher downloaded");
-
-        let target_path = Path::new(".");
-        println!("Extracting Launcher to {:?}", target_path);
+        // if let Err(_) = archive {
+            // println!("Failed to download latest release");
+            // return;
+        // }
+        // let archive = archive.unwrap();
+        let archive = File::open("Northstar.release.v1.24.4.zip").unwrap();
+        let install_dir = ".";
+        extract_zip(archive, install_dir);
     }
 }
 
@@ -41,7 +42,6 @@ async fn download_latest_release_assets(url: String) -> Result<File, Box<dyn std
         .await?;
 
     if !response.status().is_success() {
-        println!("Failed to get latest release: {}", response.status());
         return Err("Failed to get latest release".into());
     }
 
@@ -54,7 +54,6 @@ async fn download_latest_release_assets(url: String) -> Result<File, Box<dyn std
         let asset_response = client.get(&asset.browser_download_url).send().await?;
 
         if !asset_response.status().is_success() {
-            println!("Failed to download asset: {}", asset_response.status());
             return Err("Failed to download asset".into());
         }
 
@@ -79,12 +78,45 @@ async fn download_latest_release_assets(url: String) -> Result<File, Box<dyn std
 
         println!("Download completed");
 
+        dest_file.seek(std::io::SeekFrom::Start(0))?; // Rewind the file pointer
         Ok(dest_file)
     } else {
-        println!("No assets found in the latest release");
-
         Err("No assets found in the latest release".into())
     }
+}
+
+fn extract_zip(archive: File, dir: &str) {
+    let cwd = env::current_dir().unwrap();
+    let extract_dir = if dir == "." { cwd.clone() } else { cwd.join(dir) };
+
+    println!("Extracting files to: {:?}", extract_dir);
+
+    if !extract_dir.exists() {
+        fs::create_dir(extract_dir.clone()).expect("Failed to create directory");
+    }
+
+    let mut archive = ZipArchive::new(archive).unwrap_or_else(|err| {
+        panic!("Failed to open zip archive: {}", err);
+    });
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).unwrap();
+        let file_name = file.name();
+
+        let target_path = extract_dir.join(file_name);
+
+        if let Some(parent_dir) = target_path.parent() {
+            fs::create_dir_all(parent_dir).expect("Failed to create needed parent dirs, while extracting zip");
+        }
+
+        let mut ouput_file = File::create(&target_path).expect("Failed to create file while extracting zip");
+
+        io::copy(&mut file, &mut ouput_file).expect("Failed to copy file while extracting zip");
+
+        println!("Extracted: {:?}", target_path);
+    }
+
+    println!("Files extracted");
 }
 
 #[derive(Debug, Deserialize)]
