@@ -20,17 +20,17 @@ async fn main() {
 
     if !file.exists() {
         let url = String::from_str("https://api.github.com/repos/R2Northstar/Northstar/releases/latest").unwrap();
-        // let archive = download_latest_release_assets(url).await;
+        let archive = download_latest_release_assets(url).await;
 
-        // let archive = match archive {
-        //     Ok(archive) => File::open(archive).unwrap(),
-        //     Err(_) => {
-        //         println!("Failed to download latest release");
-        //         return;
-        //     }
-        // };
+        let archive = match archive {
+            Ok(archive) => File::open(archive).unwrap(),
+            Err(_) => {
+                println!("Failed to download latest release");
+                return;
+            }
+        };
 
-        let archive = File::open(PathBuf::from("Northstar.release.v1.24.4.zip")).unwrap();
+        // let archive = File::open(PathBuf::from("Northstar.release.v1.24.4.zip")).unwrap();
 
         let install_dir = "test";
         extract_zip(archive, install_dir);
@@ -93,15 +93,11 @@ fn extract_zip(archive: File, dir: &str) {
     let cwd = env::current_dir().unwrap();
     let extract_dir = if dir == "." { cwd.clone() } else { cwd.join(dir) };
 
-    println!("Extracting files to: {:?}", extract_dir);
-
     if !extract_dir.exists() {
         fs::create_dir(extract_dir.clone()).expect("Failed to create directory");
     }
 
-    let mut archive = ZipArchive::new(archive).unwrap_or_else(|err| {
-        panic!("Failed to open zip archive: {}", err);
-    });
+    let mut archive = ZipArchive::new(archive).expect("Failed to open zip archive");
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).unwrap();
